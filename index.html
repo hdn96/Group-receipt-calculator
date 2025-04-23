@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Splitter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .input-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        textarea {
+            height: 120px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button.secondary {
+            background-color: #7f8c8d;
+        }
+        button.secondary:hover {
+            background-color: #6c7a7d;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .checkbox-cell {
+            text-align: center;
+        }
+        .results {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+        .error-message {
+            background-color: #ffe6e6;
+            color: #cc0000;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .warning {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .unchecked-row {
+            background-color: #ffebee;
+        }
+        .invalid-line {
+            color: #cc0000;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Receipt Splitter</h1>
+    
+    <div class="input-section">
+        <label for="names">Names (comma-separated):</label>
+        <input type="text" id="names" placeholder="Alice, Bob, Charlie">
+        
+        <label for="items">Items (one per line, format: item, price):</label>
+        <textarea id="items" placeholder="apples, 12&#10;cake, 14&#10;soda, 20"></textarea>
+        
+        <div id="format-error" class="error-message hidden">
+            <h3>Input Format Error</h3>
+            <p>The following lines have incorrect format:</p>
+            <ul id="format-error-list"></ul>
+            <p>Each line must follow the format: <strong>item, price</strong> where item contains only letters and spaces and price is a number.</p>
+        </div>
+        
+        <div class="button-group">
+            <button id="loadExampleBtn" class="secondary">Load Example</button>
+            <button id="generateBtn">Generate Table</button>
+        </div>
+    </div>
+    
+    <div id="error-section" class="error-message hidden">
+        <h3>Error: Some items are not assigned to anyone</h3>
+        <p>The following items need to be assigned to at least one person:</p>
+        <ul id="unchecked-items"></ul>
+    </div>
+    
+    <div id="assignment-section" class="hidden">
+        <h2>Items Assignment:</h2>
+        <table id="assignment-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Price</th>
+                    <!-- People headers will be added dynamically -->
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be added dynamically -->
+            </tbody>
+        </table>
+        
+        <button id="calculateBtn">Calculate</button>
+    </div>
+    
+    <div id="results-section" class="hidden results">
+        <h2>Results:</h2>
+        <div id="totals"></div>
+        
+        <div id="unclaimed-section" class="warning hidden">
+            <h3>Unclaimed Items:</h3>
+            <p>The following items were not assigned to anyone:</p>
+            <div id="unclaimed-items"></div>
+            <p><strong>Total unclaimed amount: <span id="unclaimed-total"></span></strong></p>
+        </div>
+        
+        <h3>Items consumed:</h3>
+        <div id="consumed-items"></div>
+    </div>
+
+    <script>
+        document.getElementById('generateBtn').addEventListener('click', generateTable);
+        document.getElementById('calculateBtn').addEventListener('click', calculateSplits);
+        document.getElementById('loadExampleBtn').addEventListener('click', loadExample);
+        
+        function loadExample() {
+            // Set example names
+            document.getElementById('names').value = 'Andreas, Daniel, Hoa, Ole, Sondre';
+            
+            // Set example grocery items
+            const exampleItems = [
+                'milk, 22',
+                'bread, 18',
+                'cheese, 45',
+                'apples, 26',
+                'pasta, 15',
+                'tomatoes, 12',
+                'chicken, 65',
+                'eggs, 32',
+                'yogurt, 24',
+                'coffee, 38'
+            ].join('\n');
+            
+            document.getElementById('items').value = exampleItems;
+            
+            // Hide any previous error messages
+            document.getElementById('format-error').classList.add('hidden');
+        }
+        
+        function generateTable() {
+            const namesInput = document.getElementById('names').value.trim();
+            const itemsInput = document.getElementById('items').value.trim();
+            
+            if (!namesInput || !itemsInput) {
+                alert('Please enter both names and items.');
+                return;
+            }
+            
+            // Parse names
+            const names = namesInput.split(',').map(name => name.trim()).filter(name => name);
+            if (names.length === 0) {
+                alert('Please enter at least one name.');
+                return;
+            }
+            
+            // Parse items
+            const itemLines = itemsInput.split('\n').filter(line => line.trim());
+            const items = [];
+            const invalidLines = [];
+            
+            for (let i = 0; i < itemLines.length; i++) {
+                const line = itemLines[i].trim();
+                const parts = line.split(',');
+                
+                // Check if the line has exactly one comma (resulting in 2 parts)
+                if (parts.length !== 2) {
+                    invalidLines.push({ lineNumber: i + 1, content: line, reason: "Each line must contain exactly one comma" });
+                    continue;
+                }
+                
+                const item = parts[0].trim();
+                const priceStr = parts[1].trim();
+                
+                // Check if item contains only letters and spaces
+                if (!/^[A-Za-z\s]+$/.test(item)) {
+                    invalidLines.push({ lineNumber: i + 1, content: line, reason: "Item name must contain only letters and spaces" });
+                    continue;
+                }
+                
+                // Check if price is a valid number
+                const price = parseFloat(priceStr);
+                if (isNaN(price) || price <= 0) {
+                    invalidLines.push({ lineNumber: i + 1, content: line, reason: "Price must be a positive number" });
+                    continue;
+                }
+                
+                items.push({ item, price });
+            }
+            
+            // If there are invalid lines, show the error
+            if (invalidLines.length > 0) {
+                const formatErrorList = document.getElementById('format-error-list');
+                formatErrorList.innerHTML = '';
+                
+                for (const invalidLine of invalidLines) {
+                    formatErrorList.innerHTML += `<li><span class="invalid-line">Line ${invalidLine.lineNumber}: ${invalidLine.content}</span> - ${invalidLine.reason}</li>`;
+                }
+                
+                document.getElementById('format-error').classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('format-error').classList.add('hidden');
+            }
+            
+            if (items.length === 0) {
+                alert('Please enter at least one valid item and price.');
+                return;
+            }
+            
+            // Build the table header
+            const tableHead = document.querySelector('#assignment-table thead tr');
+            tableHead.innerHTML = '<th>Item</th><th>Price</th>';
+            
+            for (const name of names) {
+                tableHead.innerHTML += `<th>${name}</th>`;
+            }
+            
+            // Build the table body
+            const tableBody = document.querySelector('#assignment-table tbody');
+            tableBody.innerHTML = '';
+            
+            for (let i = 0; i < items.length; i++) {
+                const { item, price } = items[i];
+                let row = `<tr data-item-index="${i}">
+                    <td>${item}</td>
+                    <td>${price}</td>`;
+                
+                for (let j = 0; j < names.length; j++) {
+                    row += `<td class="checkbox-cell">
+                        <input type="checkbox" data-row="${i}" data-col="${j}">
+                    </td>`;
+                }
+                
+                row += '</tr>';
+                tableBody.innerHTML += row;
+            }
+            
+            // Hide error section if it was previously shown
+            document.getElementById('error-section').classList.add('hidden');
+            
+            // Show the assignment section
+            document.getElementById('assignment-section').classList.remove('hidden');
+            
+            // Hide the results section if it was previously shown
+            document.getElementById('results-section').classList.add('hidden');
+            
+            // Store the parsed data for later use
+            window.receiptData = { names, items };
+        }
+        
+        function calculateSplits() {
+            const { names, items } = window.receiptData;
+            
+            // Check if all items have at least one person assigned
+            const unclaimedItems = [];
+            
+            for (let i = 0; i < items.length; i++) {
+                let hasConsumer = false;
+                
+                for (let j = 0; j < names.length; j++) {
+                    const checkbox = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+                    if (checkbox && checkbox.checked) {
+                        hasConsumer = true;
+                        break;
+                    }
+                }
+                
+                if (!hasConsumer) {
+                    unclaimedItems.push({ index: i, ...items[i] });
+                    // Highlight unchecked row
+                    document.querySelector(`tr[data-item-index="${i}"]`).classList.add('unchecked-row');
+                } else {
+                    // Remove highlight if it was previously added
+                    document.querySelector(`tr[data-item-index="${i}"]`).classList.remove('unchecked-row');
+                }
+            }
+            
+            // Create arrays to track what each person owes and what they consumed
+            const personTotals = new Array(names.length).fill(0);
+            const personItems = names.map(() => []);
+            
+            // Process each item
+            for (let i = 0; i < items.length; i++) {
+                const { item, price } = items[i];
+                const consumers = [];
+                
+                // Check who consumed this item
+                for (let j = 0; j < names.length; j++) {
+                    const checkbox = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+                    if (checkbox && checkbox.checked) {
+                        consumers.push(j);
+                        personItems[j].push(item);
+                    }
+                }
+                
+                // Skip if nobody consumed this item
+                if (consumers.length === 0) continue;
+                
+                // Calculate the price per person
+                const pricePerPerson = price / consumers.length;
+                
+                // Add to each person's total
+                for (const consumer of consumers) {
+                    personTotals[consumer] += pricePerPerson;
+                }
+            }
+            
+            // Display the results
+            let totalsHtml = '';
+            for (let i = 0; i < names.length; i++) {
+                totalsHtml += `<p><strong>${names[i]} owes: ${personTotals[i].toFixed(2)}</strong></p>`;
+            }
+            document.getElementById('totals').innerHTML = totalsHtml;
+            
+            let consumedHtml = '';
+            for (let i = 0; i < names.length; i++) {
+                consumedHtml += `<p><strong>${names[i]}:</strong> ${personItems[i].join(', ') || 'Nothing'}</p>`;
+            }
+            document.getElementById('consumed-items').innerHTML = consumedHtml;
+            
+            // Handle unclaimed items
+            if (unclaimedItems.length > 0) {
+                // Display error message
+                const errorSection = document.getElementById('error-section');
+                const uncheckedList = document.getElementById('unchecked-items');
+                uncheckedList.innerHTML = '';
+                
+                unclaimedItems.forEach(item => {
+                    uncheckedList.innerHTML += `<li>${item.item} (${item.price})</li>`;
+                });
+                
+                errorSection.classList.remove('hidden');
+                
+                // Also show unclaimed items in results section
+                const unclaimedSection = document.getElementById('unclaimed-section');
+                const unclaimedItemsList = document.getElementById('unclaimed-items');
+                unclaimedItemsList.innerHTML = '';
+                
+                let unclaimedTotal = 0;
+                unclaimedItems.forEach(item => {
+                    unclaimedItemsList.innerHTML += `<p>${item.item}: ${item.price}</p>`;
+                    unclaimedTotal += item.price;
+                });
+                
+                document.getElementById('unclaimed-total').textContent = unclaimedTotal.toFixed(2);
+                unclaimedSection.classList.remove('hidden');
+            } else {
+                // Hide error and unclaimed sections
+                document.getElementById('error-section').classList.add('hidden');
+                document.getElementById('unclaimed-section').classList.add('hidden');
+            }
+            
+            // Show the results section
+            document.getElementById('results-section').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
